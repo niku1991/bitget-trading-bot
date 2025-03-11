@@ -34,8 +34,15 @@ class BitgetTradingBot:
         
         trade_opportunities = self.config["trade_opportunities"]
         
-        # Initialize components
+        # Initialize client
         self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=True, debug=debug)
+        
+        # Find a working API endpoint before proceeding
+        if not self.find_working_endpoint():
+            print("Failed to find a working Bitget API endpoint. Bot initialization incomplete.")
+            return
+            
+        # Initialize components
         self.strategy = TradingStrategy(self.client, trade_opportunities, risk_per_trade, leverage)
         self.risk_manager = RiskManager(self.client, max_risk_percent, max_positions)
         self.monitoring = MonitoringSystem(self.client)
@@ -67,6 +74,16 @@ class BitgetTradingBot:
             print(f"Invalid JSON in configuration file: {config_path}")
             sys.exit(1)
     
+    def find_working_endpoint(self):
+        """
+        Find a working API endpoint for Bitget
+        
+        Returns:
+        - True if a working endpoint was found, False otherwise
+        """
+        print("\n===== Finding Working Bitget API Endpoint =====")
+        return self.client.try_alternate_base_urls()
+    
     def test_authentication(self):
         """
         Test authentication with Bitget API
@@ -74,7 +91,7 @@ class BitgetTradingBot:
         Returns:
         - True if authentication is successful, False otherwise
         """
-        print("\n===== Testing Bitget API Authentication =====\n")
+        print("\n===== Testing Bitget API Authentication =====")
         return self.client.test_authentication()
 
     def start(self):
@@ -134,15 +151,23 @@ def main():
     parser.add_argument('--config', default='config.json', help='Path to configuration file')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     parser.add_argument('--test-auth', action='store_true', help='Test API authentication and exit')
+    parser.add_argument('--find-endpoints', action='store_true', help='Only find working endpoints and exit')
     args = parser.parse_args()
     
-    # Initialize bot
-    bot = BitgetTradingBot(config_path=args.config, debug=args.debug)
-    
     try:
+        # Initialize bot
+        bot = BitgetTradingBot(config_path=args.config, debug=args.debug)
+        
+        # Test endpoint discovery if requested
+        if args.find_endpoints:
+            success = bot.find_working_endpoint()
+            print(f"Endpoint discovery {'successful' if success else 'failed'}")
+            sys.exit(0 if success else 1)
+            
         # Test authentication if requested
         if args.test_auth:
             success = bot.test_authentication()
+            print(f"Authentication test {'successful' if success else 'failed'}")
             sys.exit(0 if success else 1)
         
         # Start bot with risk management
@@ -154,10 +179,12 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         # Stop bot on Ctrl+C
-        bot.stop()
+        if 'bot' in locals():
+            bot.stop()
     except Exception as e:
         print(f"Error running bot: {e}")
-        bot.stop()
+        if 'bot' in locals():
+            bot.stop()
         sys.exit(1)
 
 if __name__ == "__main__":
