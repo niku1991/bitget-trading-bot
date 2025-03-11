@@ -5,7 +5,7 @@ Automated trading bot for Bitget cryptocurrency exchange based on market analysi
 ## Features
 
 - **API Integration**: Secure integration with Bitget's API for USDT-M futures trading
-- **API Endpoint Auto-Detection**: Automatically finds working Bitget API endpoints
+- **Automatic API Endpoint Discovery**: Automatically finds the correct API endpoints even if Bitget changes them
 - **Risk Management**: Limits position sizes based on account balance and configurable risk parameters
 - **Partial Take-Profit Strategy**: Takes profit at 50% of target and moves stop-loss to break-even
 - **Position Monitoring**: Tracks positions and provides alerts, especially as they approach the 24-hour mark
@@ -40,29 +40,18 @@ pip install -r requirements.txt
    - Edit the `config.json` file and add your API key, secret, and passphrase
    - Adjust trading parameters if needed
 
-## API Connection Testing
-
-Before running the bot, it's recommended to test the API connection:
-
-```bash
-python main.py --test-connection
-```
-
-This will attempt to connect to various Bitget API endpoints to find one that works. The bot will automatically try different API base URLs if the default one doesn't work.
-
 ## Authentication Testing
 
-After confirming API connectivity, test your API credentials:
+Before running the bot, it's recommended to test your API credentials:
 
 ```bash
 python auth_test.py
 ```
 
 This script will:
-1. Try different Bitget API endpoints to find a working one
+1. Try different API endpoints to find the correct ones (even if Bitget has changed them)
 2. Verify that your API credentials are working correctly
-3. Show your account balance if authentication is successful
-4. Provide troubleshooting steps if authentication fails
+3. Display your account balance if successful
 
 Common authentication errors include:
 - **apikey/password is incorrect** (code 40012): Check your API key and passphrase
@@ -84,7 +73,7 @@ python main.py --debug
 ```
 
 The bot will:
-1. Test API connectivity to find a working endpoint
+1. Automatically find the correct API endpoints
 2. Test your API credentials
 3. Connect to Bitget and check account balance
 4. Apply risk filters to determine which trades to execute
@@ -106,7 +95,6 @@ Available options:
 - `--config PATH`: Specify an alternative config file path
 - `--debug`: Enable detailed API debugging output
 - `--test-auth`: Only test authentication and exit
-- `--test-connection`: Only test API connectivity and exit
 
 ## Risk Management Strategy
 
@@ -128,15 +116,14 @@ The bot implements several risk management features:
 
 If you encounter issues:
 
-1. **API Connection Errors**:
-   - Use `python main.py --test-connection` to test API connectivity
-   - The bot will automatically try different API endpoints if the default one doesn't work
-   - Check if your internet connection can access Bitget's API servers
-
-2. **Authentication Errors**:
-   - Use `python auth_test.py` to diagnose API credential issues
+1. **Authentication Errors**:
+   - Use `auth_test.py` to diagnose API credential issues
    - Ensure no whitespace in credentials
    - Try creating new API keys on Bitget
+
+2. **API Endpoint Changes**:
+   - The bot now includes automatic API endpoint discovery and will try multiple Bitget API endpoints
+   - If Bitget significantly changes their API structure, check their documentation for updates
 
 3. **Order Placement Errors**:
    - Verify you have sufficient funds in your account
@@ -158,6 +145,14 @@ Edit the `config.json` file to modify existing trades or add new ones. Each trad
 - **confidence**: Confidence level ("High", "Medium-High", "Medium", or "Low")
 - **base_increment**: Minimum order size increment
 - **tick_size**: Minimum price increment
+
+## Updates and Improvements
+
+### Latest Updates (March 2025)
+- Added automatic API endpoint discovery to handle Bitget API changes
+- Improved error handling for better troubleshooting
+- Added detailed debugging options for API interactions
+- Enhanced authentication testing with better guidance
 
 ## Contributing
 
