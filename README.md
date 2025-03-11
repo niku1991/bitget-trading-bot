@@ -5,6 +5,7 @@ Automated trading bot for Bitget cryptocurrency exchange based on market analysi
 ## Features
 
 - **API Integration**: Secure integration with Bitget's API for USDT-M futures trading
+- **API Endpoint Discovery**: Automatically finds working API endpoints even when Bitget changes their API structure
 - **Risk Management**: Limits position sizes based on account balance and configurable risk parameters
 - **Partial Take-Profit Strategy**: Takes profit at 50% of target and moves stop-loss to break-even
 - **Position Monitoring**: Tracks positions and provides alerts, especially as they approach the 24-hour mark
@@ -39,6 +40,16 @@ pip install -r requirements.txt
    - Edit the `config.json` file and add your API key, secret, and passphrase
    - Adjust trading parameters if needed
 
+## API Endpoint Discovery
+
+The bot now includes robust API endpoint discovery to handle changes in Bitget's API structure. To test this feature:
+
+```bash
+python main.py --find-endpoints
+```
+
+This will attempt to find working Bitget API endpoints by trying various common endpoint combinations. The bot will automatically use the working endpoint it discovers.
+
 ## Authentication Testing
 
 Before running the bot, it's recommended to test your API credentials:
@@ -47,11 +58,24 @@ Before running the bot, it's recommended to test your API credentials:
 python auth_test.py
 ```
 
-This script will verify that your API credentials are working correctly by making a simple API call to Bitget. If successful, you'll see your account balance displayed.
+This script will:
+1. First try to find working Bitget API endpoints
+2. Then verify that your API credentials are working correctly
+3. Display your account balance if authentication is successful
 
-Common authentication errors include:
-- **apikey/password is incorrect** (code 40012): Check your API key and passphrase
-- **sign signature error** (code 40009): Check your API secret key
+Common authentication errors and their solutions:
+
+- **apikey/password is incorrect** (code 40012):
+  - Check your API key and passphrase
+  - Create new API credentials on Bitget
+
+- **sign signature error** (code 40009):
+  - Check your API secret key
+  - Ensure your computer's time is synchronized
+
+- **Request URL NOT FOUND** (code 40404):
+  - This is now handled automatically by the endpoint discovery feature
+  - The bot will try multiple endpoint formats until it finds one that works
 
 If you encounter authentication issues, try the following:
 1. Make sure there's no leading/trailing whitespace in your credentials
@@ -68,12 +92,13 @@ python main.py --debug
 ```
 
 The bot will:
-1. Test your API credentials
-2. Connect to Bitget and check account balance
-3. Apply risk filters to determine which trades to execute
-4. Place entry, take-profit, and stop-loss orders for filtered trades
-5. Monitor positions continuously and provide updates
-6. Alert you when positions approach the 24-hour time limit
+1. Find working API endpoints
+2. Test your API credentials
+3. Connect to Bitget and check account balance
+4. Apply risk filters to determine which trades to execute
+5. Place entry, take-profit, and stop-loss orders for filtered trades
+6. Monitor positions continuously and provide updates
+7. Alert you when positions approach the 24-hour time limit
 
 To stop the bot, press `Ctrl+C`.
 
@@ -89,6 +114,7 @@ Available options:
 - `--config PATH`: Specify an alternative config file path
 - `--debug`: Enable detailed API debugging output
 - `--test-auth`: Only test authentication and exit
+- `--find-endpoints`: Only find working endpoints and exit
 
 ## Risk Management Strategy
 
@@ -115,12 +141,17 @@ If you encounter issues:
    - Ensure no whitespace in credentials
    - Try creating new API keys on Bitget
 
-2. **Order Placement Errors**:
+2. **API Endpoint Issues**:
+   - Run with `--find-endpoints` to test endpoint discovery
+   - The bot will automatically try various endpoint formats
+   - Check Bitget's developer documentation for the latest API changes
+
+3. **Order Placement Errors**:
    - Verify you have sufficient funds in your account
    - Check that the symbol name is correct (e.g., "DOGEUSDT_UMCBL")
    - Ensure position size is above the minimum for the symbol
 
-3. **Other Issues**:
+4. **Other Issues**:
    - Run with `--debug` flag to see detailed API requests and responses
    - Check Bitget's API documentation for any recent changes
 
