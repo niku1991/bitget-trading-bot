@@ -5,7 +5,7 @@ Automated trading bot for Bitget cryptocurrency exchange based on market analysi
 ## Features
 
 - **API Integration**: Secure integration with Bitget's API for USDT-M futures trading
-- **Automatic API Endpoint Discovery**: Automatically finds the correct API endpoints even if Bitget changes them
+- **Dynamic API Endpoint Discovery**: Automatically finds working Bitget API endpoints
 - **Risk Management**: Limits position sizes based on account balance and configurable risk parameters
 - **Partial Take-Profit Strategy**: Takes profit at 50% of target and moves stop-loss to break-even
 - **Position Monitoring**: Tracks positions and provides alerts, especially as they approach the 24-hour mark
@@ -40,29 +40,34 @@ pip install -r requirements.txt
    - Edit the `config.json` file and add your API key, secret, and passphrase
    - Adjust trading parameters if needed
 
+## API Connectivity Testing
+
+Before running the full bot, you can test the basic API connectivity:
+
+```bash
+python main.py --test-connection
+```
+
+This will check if the bot can reach Bitget's API servers and find a working endpoint. If Bitget has changed their API URLs, the bot will automatically try to discover a working endpoint.
+
 ## Authentication Testing
 
-Before running the bot, it's recommended to test your API credentials:
+It's also recommended to test your API credentials:
 
 ```bash
 python auth_test.py
 ```
 
 This script will:
-1. Try different API endpoints to find the correct ones (even if Bitget has changed them)
-2. Verify that your API credentials are working correctly
-3. Display your account balance if successful
+1. Verify that your API credentials are properly formatted
+2. Test connectivity to Bitget's API servers
+3. Try to authenticate with your credentials
+4. Display your account balance if successful
 
 Common authentication errors include:
 - **apikey/password is incorrect** (code 40012): Check your API key and passphrase
 - **sign signature error** (code 40009): Check your API secret key
-- **Request URL NOT FOUND** (code 40404): The bot will now automatically try different API endpoints
-
-If you encounter authentication issues, try the following:
-1. Make sure there's no leading/trailing whitespace in your credentials
-2. Create new API credentials on Bitget and update your config.json file
-3. Ensure your API key has trading permissions enabled
-4. If you've enabled IP restrictions, make sure your current IP is allowed
+- **Request URL NOT FOUND** (code 40404): The API endpoint might have changed, but the bot will automatically try to find a working one
 
 ## Usage
 
@@ -73,13 +78,14 @@ python main.py --debug
 ```
 
 The bot will:
-1. Automatically find the correct API endpoints
-2. Test your API credentials
-3. Connect to Bitget and check account balance
-4. Apply risk filters to determine which trades to execute
-5. Place entry, take-profit, and stop-loss orders for filtered trades
-6. Monitor positions continuously and provide updates
-7. Alert you when positions approach the 24-hour time limit
+1. Test connectivity to Bitget's API servers
+2. Find a working API endpoint if the default one has changed
+3. Test your API credentials
+4. Connect to Bitget and check account balance
+5. Apply risk filters to determine which trades to execute
+6. Place entry, take-profit, and stop-loss orders for filtered trades
+7. Monitor positions continuously and provide updates
+8. Alert you when positions approach the 24-hour time limit
 
 To stop the bot, press `Ctrl+C`.
 
@@ -95,6 +101,7 @@ Available options:
 - `--config PATH`: Specify an alternative config file path
 - `--debug`: Enable detailed API debugging output
 - `--test-auth`: Only test authentication and exit
+- `--test-connection`: Only test API connectivity and exit
 
 ## Risk Management Strategy
 
@@ -116,23 +123,30 @@ The bot implements several risk management features:
 
 If you encounter issues:
 
-1. **Authentication Errors**:
+1. **Connection Errors**:
+   - Use `main.py --test-connection` to check basic connectivity
+   - The bot will automatically try to find working API endpoints if Bitget has changed them
+   - Check your internet connection and firewall settings
+
+2. **Authentication Errors**:
    - Use `auth_test.py` to diagnose API credential issues
    - Ensure no whitespace in credentials
    - Try creating new API keys on Bitget
-
-2. **API Endpoint Changes**:
-   - The bot now includes automatic API endpoint discovery and will try multiple Bitget API endpoints
-   - If Bitget significantly changes their API structure, check their documentation for updates
 
 3. **Order Placement Errors**:
    - Verify you have sufficient funds in your account
    - Check that the symbol name is correct (e.g., "DOGEUSDT_UMCBL")
    - Ensure position size is above the minimum for the symbol
 
-4. **Other Issues**:
+4. **404 "URL NOT FOUND" Errors**:
+   - Bitget may have changed their API structure
+   - The bot will automatically try to find a working endpoint
+   - If automatic discovery fails, check Bitget's latest API documentation
+
+5. **Other Issues**:
    - Run with `--debug` flag to see detailed API requests and responses
    - Check Bitget's API documentation for any recent changes
+   - Try running just the authentication test script
 
 ## Modifying Trade Opportunities
 
@@ -146,13 +160,12 @@ Edit the `config.json` file to modify existing trades or add new ones. Each trad
 - **base_increment**: Minimum order size increment
 - **tick_size**: Minimum price increment
 
-## Updates and Improvements
+## Recent Updates
 
-### Latest Updates (March 2025)
-- Added automatic API endpoint discovery to handle Bitget API changes
-- Improved error handling for better troubleshooting
-- Added detailed debugging options for API interactions
-- Enhanced authentication testing with better guidance
+- **API Endpoint Discovery**: The bot now automatically tries to find working Bitget API endpoints if the default ones have changed
+- **Improved Error Handling**: Better handling of authentication and connection errors
+- **New Testing Tools**: Added dedicated connectivity and authentication testing
+- **Better Debugging**: Enhanced debug output for troubleshooting
 
 ## Contributing
 
