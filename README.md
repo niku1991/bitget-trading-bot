@@ -5,7 +5,7 @@ Automated trading bot for Bitget cryptocurrency exchange based on market analysi
 ## Features
 
 - **API Integration**: Secure integration with Bitget's API for USDT-M futures trading
-- **API Endpoint Discovery**: Automatically finds working API endpoints even when Bitget changes their API structure
+- **Adaptive API Handling**: Automatically tests multiple API endpoints to adapt to Bitget API changes
 - **Risk Management**: Limits position sizes based on account balance and configurable risk parameters
 - **Partial Take-Profit Strategy**: Takes profit at 50% of target and moves stop-loss to break-even
 - **Position Monitoring**: Tracks positions and provides alerts, especially as they approach the 24-hour mark
@@ -40,60 +40,46 @@ pip install -r requirements.txt
    - Edit the `config.json` file and add your API key, secret, and passphrase
    - Adjust trading parameters if needed
 
-## API Endpoint Discovery
-
-The bot now includes robust API endpoint discovery to handle changes in Bitget's API structure. To test this feature:
-
-```bash
-python main.py --find-endpoints
-```
-
-This will attempt to find working Bitget API endpoints by trying various common endpoint combinations. The bot will automatically use the working endpoint it discovers.
-
 ## Authentication Testing
 
-Before running the bot, it's recommended to test your API credentials:
+Before running the bot, test your API credentials with our enhanced authentication tester:
 
 ```bash
 python auth_test.py
 ```
 
 This script will:
-1. First try to find working Bitget API endpoints
-2. Then verify that your API credentials are working correctly
-3. Display your account balance if authentication is successful
+1. Try multiple Bitget API endpoints to find working ones (adapting to API changes)
+2. Verify that your API credentials are working correctly
+3. Display clear error messages and troubleshooting tips if there are issues
 
-Common authentication errors and their solutions:
+If you're having trouble with the futures API, try testing with the spot API:
 
-- **apikey/password is incorrect** (code 40012):
-  - Check your API key and passphrase
-  - Create new API credentials on Bitget
+```bash
+python auth_test.py --spot
+```
 
-- **sign signature error** (code 40009):
-  - Check your API secret key
-  - Ensure your computer's time is synchronized
+### Handling Bitget API Changes
 
-- **Request URL NOT FOUND** (code 40404):
-  - This is now handled automatically by the endpoint discovery feature
-  - The bot will try multiple endpoint formats until it finds one that works
+Bitget may occasionally update their API structure, causing endpoints to change. Our bot includes an adaptive system that:
 
-If you encounter authentication issues, try the following:
-1. Make sure there's no leading/trailing whitespace in your credentials
-2. Create new API credentials on Bitget and update your config.json file
-3. Ensure your API key has trading permissions enabled
-4. If you've enabled IP restrictions, make sure your current IP is allowed
+1. Tries multiple API base URLs (v1, v2, v3, etc.)
+2. Tests various endpoints for each base URL
+3. Automatically uses the working combination
+
+If you encounter the error `"Request URL NOT FOUND"`, the bot will attempt to find a working alternative API endpoint automatically.
 
 ## Usage
 
-Run the bot in debug mode to see detailed API requests and responses:
+Run the bot with debugging enabled to see detailed API communication:
 
 ```bash
 python main.py --debug
 ```
 
 The bot will:
-1. Find working API endpoints
-2. Test your API credentials
+1. Test multiple API endpoints to find a working combination
+2. Verify your API credentials
 3. Connect to Bitget and check account balance
 4. Apply risk filters to determine which trades to execute
 5. Place entry, take-profit, and stop-loss orders for filtered trades
@@ -114,7 +100,7 @@ Available options:
 - `--config PATH`: Specify an alternative config file path
 - `--debug`: Enable detailed API debugging output
 - `--test-auth`: Only test authentication and exit
-- `--find-endpoints`: Only find working endpoints and exit
+- `--spot`: Use spot API instead of futures API
 
 ## Risk Management Strategy
 
@@ -134,26 +120,32 @@ The bot implements several risk management features:
 
 ## Troubleshooting
 
-If you encounter issues:
+The bot has been enhanced with comprehensive error handling and troubleshooting features.
 
-1. **Authentication Errors**:
-   - Use `auth_test.py` to diagnose API credential issues
-   - Ensure no whitespace in credentials
-   - Try creating new API keys on Bitget
+### API Connectivity Issues
 
-2. **API Endpoint Issues**:
-   - Run with `--find-endpoints` to test endpoint discovery
-   - The bot will automatically try various endpoint formats
-   - Check Bitget's developer documentation for the latest API changes
+If you see `"Request URL NOT FOUND"` errors:
+- The bot will automatically try alternate API endpoints
+- Try running with the `--spot` option to test the spot API instead
+- Check if Bitget has updated their API documentation
 
-3. **Order Placement Errors**:
-   - Verify you have sufficient funds in your account
-   - Check that the symbol name is correct (e.g., "DOGEUSDT_UMCBL")
-   - Ensure position size is above the minimum for the symbol
+### Authentication Errors
 
-4. **Other Issues**:
-   - Run with `--debug` flag to see detailed API requests and responses
-   - Check Bitget's API documentation for any recent changes
+If you see authentication errors:
+- Use `auth_test.py` to diagnose API credential issues
+- Ensure no whitespace in credentials
+- Verify API key has correct permissions
+- Try creating new API keys on Bitget
+
+### Order Placement Errors
+
+- Verify you have sufficient funds in your account
+- Check that the symbol name is correct (e.g., "DOGEUSDT_UMCBL")
+- Ensure position size is above the minimum for the symbol
+
+### General Debugging
+
+Run with the `--debug` flag to see detailed API requests and responses. This will help identify exactly where any errors are occurring.
 
 ## Modifying Trade Opportunities
 
