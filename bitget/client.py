@@ -23,95 +23,88 @@ class BitgetClient:
         self.passphrase = passphrase.strip()
         self.debug = debug
         
-        # Updated Bitget API base URLs - we'll use the V2 API which is more recent
+        # Base URL for API endpoints - Bitget regularly updates their API paths
+        self.is_futures = is_futures
+        
+        # We'll try multiple possible base URLs, starting with the most likely ones
         if is_futures:
-            # USDT-M perpetual contracts - switched to v2 API which is more reliable
-            self.base_url = "https://api.bitget.com/api/v2/mix"
+            # USDT-M Futures (also called USDT Swap/Perpetual)
+            self.base_url = "https://api.bitget.com/api/mix/v1"
         else:
-            # Spot trading - switched to v2 API
-            self.base_url = "https://api.bitget.com/api/v2/spot"
+            # Spot trading
+            self.base_url = "https://api.bitget.com/api/spot/v1"
             
         self.session = requests.Session()
-        
-        if debug:
-            print(f"Initialized Bitget client with API key: {self.api_key[:6]}{'*' * (len(self.api_key) - 6)}")
-            print(f"Using API base URL: {self.base_url}")
     
     def try_alternate_base_urls(self):
-        """Try different base URL formats to find the working one"""
-        possible_urls = [
-            # New V2 API endpoints (preferred)
-            "https://api.bitget.com/api/v2/mix",
-            "https://api.bitget.com/api/v2/spot",
-            "https://api.bitget.com/v2",
-            
-            # Legacy V1 API endpoints
-            "https://api.bitget.com/api/mix/v1",
-            "https://api-swap.bitget.com/api/mix/v1",
-            "https://capi.bitget.com/api/swap/v3",
-            "https://api.bitget.com/api/futures/v3"
-        ]
+        """
+        Try different base URL formats to find the working one
         
+        Returns:
+        - True if a working base URL was found, False otherwise
+        """
+        if self.is_futures:
+            # Possible futures/mix/swap API base URLs
+            possible_urls = [
+                "https://api.bitget.com/api/mix/v1",
+                "https://api.bitget.com/api/mix/v2",
+                "https://api.bitget.com/v2/mix",
+                "https://api.bitget.com/api/swap/v3",
+                "https://api-swap.bitget.com/api/swap/v3",
+                "https://api.bitget.com/api/futures/v3"
+            ]
+        else:
+            # Possible spot API base URLs
+            possible_urls = [
+                "https://api.bitget.com/api/spot/v1",
+                "https://api.bitget.com/api/spot/v2",
+                "https://api.bitget.com/v2/spot",
+                "https://api-cloud.bitget.com/api/spot/v1"
+            ]
+        
+        original_base = self.base_url
+        original_debug = self.debug
+        
+        # Temporarily enable debug if it wasn't already
+        self.debug = True
+        
+        print(f"\nTrying to find working Bitget API endpoint...")
         for url in possible_urls:
-            old_base = self.base_url
             self.base_url = url
             try:
-                if self.debug:
-                    print(f"\nTrying base URL: {url}")
+                # Try different common public endpoints
+                endpoints_to_try = [
+                    "/market/contracts",  # Futures contract info
+                    "/market/tickers",    # All tickers info
+                    "/market/time",       # Server time
+                    "/public/time",       # Alternative server time
+                    "/public/products"    # Product info
+                ]
                 
-                # Try different endpoint formats based on the API version
-                if "v2" in url:
-                    # V2 API endpoints
-                    if "mix" in url:
-                        test_url = f"{url}/market/tickers?productType=USDT-FUTURES"
-                    else:
-                        test_url = f"{url}/public/time"
-                else:
-                    # V1 API endpoints
-                    if "mix" in url or "swap" in url or "futures" in url:
-                        test_url = f"{url}/market/contracts?productType=umcbl"
-                    else:
-                        test_url = f"{url}/public/time"
-                
-                # Try to fetch a simple public endpoint that doesn't require authentication
-                response = self._make_public_request("GET", test_url)
-                if response and response.status_code == 200:
-                    print(f"✅ Success with base URL: {url}")
-                    # If successful, keep this base URL
-                    return True
+                for endpoint in endpoints_to_try:
+                    try:
+                        print(f"Trying {url}{endpoint}...")
+                        response = self.session.get(f"{url}{endpoint}")
+                        
+                        if response.status_code == 200:
+                            print(f"✅ Success with {url}{endpoint}")
+                            # Restore original debug setting
+                            self.debug = original_debug
+                            return True
+                        else:
+                            print(f"❌ Failed with {url}{endpoint}: {response.status_code}")
+                    except Exception as e:
+                        print(f"❌ Error with {url}{endpoint}: {str(e)}")
+                        continue
             except Exception as e:
-                if self.debug:
-                    print(f"❌ Failed with base URL: {url}")
-                    print(f"Error: {str(e)}")
-            # Restore the original base URL
-            self.base_url = old_base
+                print(f"❌ Failed with base URL {url}: {str(e)}")
+                continue
         
+        # If we didn't find a working URL, restore the original
+        self.base_url = original_base
+        self.debug = original_debug
+        print(f"❌ Could not find working Bitget API endpoint. Using {self.base_url}")
         return False
-    
-    def _make_public_request(self, method, url, params=None):
-        """Make a public request without authentication"""
-        try:
-            if params:
-                if "?" in url:
-                    url = url + "&" + urlencode(params)
-                else:
-                    url = url + "?" + urlencode(params)
-            
-            if self.debug:
-                print(f"Making public request: {method} {url}")
-                
-            response = self.session.request(method, url, timeout=10)  # Added timeout
-            
-            if self.debug:
-                print(f"Response status: {response.status_code}")
-                if response.text:
-                    print(f"Response: {response.text[:2000]}")  # Limit to 2000 chars
-                    
-            return response
-        except Exception as e:
-            if self.debug:
-                print(f"Public request error: {str(e)}")
-            return None
     
     def _generate_signature(self, timestamp, method, request_path, body=''):
         """
@@ -129,14 +122,8 @@ class BitgetClient:
         # For empty body, use empty string instead of JSON
         body_str = json.dumps(body) if body else ''
         
-        # Extract path from request_path (remove query parameters)
-        if '?' in request_path:
-            path = request_path.split('?')[0]
-        else:
-            path = request_path
-            
         # Construct the message (method must be uppercase)
-        message = str(timestamp) + method.upper() + path + body_str
+        message = str(timestamp) + method.upper() + request_path + body_str
         
         if self.debug:
             print(f"DEBUG: Signature message: {message}")
@@ -165,7 +152,6 @@ class BitgetClient:
         Returns:
         - API response as JSON
         """
-        # Construct URL
         url = self.base_url + endpoint
         timestamp = str(int(time.time() * 1000))
         
@@ -174,14 +160,9 @@ class BitgetClient:
         if params:
             query_string = urlencode(params)
             url = url + '?' + query_string
-        
-        # Complete request path for signature (including query string)
-        request_path = endpoint
-        if query_string:
-            request_path = endpoint + '?' + query_string
             
         # Generate signature
-        signature = self._generate_signature(timestamp, method, request_path, data)
+        signature = self._generate_signature(timestamp, method, endpoint, data)
         
         # Prepare headers
         headers = {
@@ -210,8 +191,7 @@ class BitgetClient:
                 method=method,
                 url=url,
                 headers=headers,
-                json=data,
-                timeout=10  # Added timeout
+                json=data
             )
             
             # Debug response
@@ -222,18 +202,17 @@ class BitgetClient:
             # Handle response
             if response.status_code == 200:
                 resp_json = response.json()
-                if isinstance(resp_json, dict) and resp_json.get('code') != '00000' and 'code' in resp_json:
-                    if resp_json.get('code') == '40404':  # URL not found
-                        raise Exception(f"API endpoint not found: {endpoint}. Please check Bitget API documentation for the correct endpoint.")
+                if resp_json.get('code') != '00000' and 'code' in resp_json:
                     error_message = f"API request failed: {response.text}"
                     print(error_message)
                     raise Exception(error_message)
                 return resp_json
+            # Handle 404 errors specifically - might need to try different base URLs
             elif response.status_code == 404:
-                # Special handling for 404 errors
-                error_message = f"API endpoint not found: {endpoint}. Please check Bitget API documentation for the correct endpoint."
+                error_message = f"API endpoint not found (404): {response.text}"
                 print(error_message)
-                raise Exception(f"API request failed: {response.text}")
+                print("This may indicate that Bitget's API structure has changed.")
+                raise Exception(error_message)
             else:
                 error_message = f"API request failed: {response.text}"
                 print(error_message)
@@ -244,7 +223,44 @@ class BitgetClient:
             print(error_message)
             raise Exception(error_message)
     
-    # Trading methods - these need to be adapted for V2 API if we're using that
+    # Utility methods
+    def ping_api(self):
+        """
+        Check if the API is accessible with a simple public endpoint
+        
+        Returns:
+        - True if successful, False otherwise
+        """
+        try:
+            # Try several common public endpoints that don't require authentication
+            endpoints = [
+                "/market/contracts",
+                "/market/tickers",
+                "/public/time"
+            ]
+            
+            for endpoint in endpoints:
+                try:
+                    url = self.base_url + endpoint
+                    if self.debug:
+                        print(f"Pinging API with: GET {url}")
+                    
+                    response = self.session.get(url)
+                    
+                    if response.status_code == 200:
+                        if self.debug:
+                            print(f"API ping successful with {endpoint}")
+                        return True
+                except Exception:
+                    continue
+            
+            return False
+        except Exception as e:
+            if self.debug:
+                print(f"API ping failed: {str(e)}")
+            return False
+    
+    # Trading methods
     def place_order(self, symbol, side, order_type, price=None, size=None, leverage=None):
         """
         Place an order on Bitget Futures
@@ -260,12 +276,7 @@ class BitgetClient:
         Returns:
         - Order response from API
         """
-        # V2 API endpoint for order placement
-        if "v2" in self.base_url:
-            endpoint = "/order"
-        else:
-            # V1 API endpoint
-            endpoint = "/order/placeOrder"
+        endpoint = "/order/placeOrder"
         
         # Prepare order data
         data = {
@@ -297,13 +308,7 @@ class BitgetClient:
         Returns:
         - API response
         """
-        # V2 API endpoint for setting leverage
-        if "v2" in self.base_url:
-            endpoint = "/account/leverage"
-        else:
-            # V1 API endpoint
-            endpoint = "/account/setLeverage"
-            
+        endpoint = "/account/setLeverage"
         data = {
             "symbol": symbol,
             "marginCoin": "USDT",
@@ -321,13 +326,7 @@ class BitgetClient:
         Returns:
         - List of current positions
         """
-        # V2 API endpoint for positions
-        if "v2" in self.base_url:
-            endpoint = "/position/all-position"
-        else:
-            # V1 API endpoint
-            endpoint = "/position/allPosition"
-            
+        endpoint = "/position/allPosition"
         params = {"marginCoin": "USDT"}
         if symbol:
             params["symbol"] = symbol
@@ -347,13 +346,7 @@ class BitgetClient:
         Returns:
         - Order response from API
         """
-        # V2 API endpoint for stop orders
-        if "v2" in self.base_url:
-            endpoint = "/plan/place-plan"
-        else:
-            # V1 API endpoint
-            endpoint = "/plan/placePlan"
-            
+        endpoint = "/plan/placePlan"
         data = {
             "symbol": symbol,
             "marginCoin": "USDT",
@@ -379,36 +372,10 @@ class BitgetClient:
         Returns:
         - Current market price as float
         """
-        # V2 API endpoint for ticker
-        if "v2" in self.base_url:
-            endpoint = "/market/ticker"
-        else:
-            # V1 API endpoint
-            endpoint = "/market/ticker"
-            
+        endpoint = "/market/ticker"
         params = {"symbol": symbol}
-        try:
-            response = self._request("GET", endpoint, params=params)
-            # V2 API response structure might be different
-            if "v2" in self.base_url:
-                return float(response['data']['last'])
-            else:
-                return float(response['data']['last'])
-        except Exception as e:
-            print(f"Error getting market price: {str(e)}")
-            print("Trying alternative endpoint...")
-            
-            # Try alternative endpoint for market price
-            try:
-                # Try public ticker endpoint which doesn't require authentication
-                url = f"https://api.bitget.com/api/v2/mix/market/ticker?symbol={symbol}"
-                response = self._make_public_request("GET", url)
-                if response and response.status_code == 200:
-                    data = response.json()
-                    return float(data['data']['last'])
-                return 0.0
-            except Exception:
-                return 0.0
+        response = self._request("GET", endpoint, params=params)
+        return float(response['data']['last'])
     
     def get_account_balance(self):
         """
@@ -417,42 +384,11 @@ class BitgetClient:
         Returns:
         - Available USDT balance
         """
-        try:
-            # V2 API endpoint for account balance
-            if "v2" in self.base_url:
-                endpoint = "/account/accounts"
-            else:
-                # V1 API endpoint
-                endpoint = "/account/accounts"
-                
-            params = {"productType": "umcbl"}
-            response = self._request("GET", endpoint, params=params)
-            
-            for acct in response['data']:
-                if acct['marginCoin'] == 'USDT':
-                    return float(acct['available'])
-            return 0.0
-        except Exception as e:
-            print(f"Error getting account balance: {str(e)}")
-            if self.debug:
-                print("Trying alternative endpoints...")
-            
-            # Try alternative endpoints
-            try:
-                # Try V2 endpoint
-                old_base = self.base_url
-                self.base_url = "https://api.bitget.com/api/v2"
-                response = self._request("GET", "/mix/account/accounts", params={"productType": "umcbl"})
-                self.base_url = old_base
-                
-                for acct in response['data']:
-                    if acct['marginCoin'] == 'USDT':
-                        return float(acct['available'])
-            except Exception:
-                self.base_url = old_base
-                print("Failed to get account balance with alternative endpoint")
-                
-            return 0.0
+        response = self._request("GET", "/account/accounts", params={"productType": "umcbl"})
+        for acct in response['data']:
+            if acct['marginCoin'] == 'USDT':
+                return float(acct['available'])
+        return 0.0
     
     def get_pending_orders(self):
         """
@@ -461,14 +397,7 @@ class BitgetClient:
         Returns:
         - List of pending orders
         """
-        # V2 API endpoint for pending orders
-        if "v2" in self.base_url:
-            endpoint = "/order/open-order"
-        else:
-            # V1 API endpoint
-            endpoint = "/order/pending"
-            
-        return self._request("GET", endpoint)
+        return self._request("GET", "/order/pending")
     
     def test_authentication(self):
         """
@@ -477,88 +406,31 @@ class BitgetClient:
         Returns:
         - True if authentication is successful, False otherwise
         """
-        try:
-            # First try if we need to find a working base URL
-            if self.debug:
-                print("Testing different API base URLs...")
-            if self.try_alternate_base_urls():
-                print("Found working API base URL.")
-            
-            # Try a simple public endpoint first to ensure the base URL is correct
-            print("\nTesting public API endpoint...")
-            
-            # Different endpoints based on API version
-            if "v2" in self.base_url:
-                if "mix" in self.base_url:
-                    contracts_endpoint = "/market/tickers"
-                    params = {"productType": "USDT-FUTURES"}
-                else:
-                    contracts_endpoint = "/public/time"
-                    params = {}
-            else:
-                contracts_endpoint = "/market/contracts"
-                params = {"productType": "umcbl"}
-            
-            public_url = self.base_url + contracts_endpoint
-            public_response = self._make_public_request("GET", public_url, params)
-            
-            if not public_response or public_response.status_code != 200:
-                print(f"Public API endpoint test failed. Status: {public_response.status_code if public_response else 'None'}")
-                print("Trying other public endpoints...")
-                
-                # Try alternative public endpoints
-                alt_endpoints = [
-                    "/market/time",
-                    "/public/time",
-                    "/market/ticker",
-                    "/public/products"
-                ]
-                
-                for endpoint in alt_endpoints:
-                    try:
-                        print(f"Trying public endpoint: {endpoint}")
-                        public_url = self.base_url + endpoint
-                        public_response = self._make_public_request("GET", public_url)
-                        if public_response and public_response.status_code == 200:
-                            print(f"Public endpoint {endpoint} works!")
-                            break
-                    except Exception:
-                        continue
-            
-            # Now try authenticated endpoint
-            print("\nTesting authenticated API endpoint...")
-            try:
-                # Try to access account endpoint that requires authentication
-                # Different endpoints based on API version
-                if "v2" in self.base_url:
-                    account_endpoint = "/account/accounts"
-                else:
-                    account_endpoint = "/account/accounts"
-                    
-                account_response = self._request("GET", account_endpoint, params={"productType": "umcbl"})
-                print("Authentication test successful!")
-                return True
-            except Exception as e:
-                print(f"Authentication test failed: {str(e)}")
-                
-                print("\nTrying alternative authenticated endpoints...")
-                alt_auth_endpoints = [
-                    ["/position/all-position", {"marginCoin": "USDT"}],
-                    ["/position/allPosition", {"marginCoin": "USDT"}],
-                    ["/account/getAccount", {"marginCoin": "USDT", "symbol": "BTCUSDT_UMCBL"}],
-                    ["/market/symbol-level", {"symbol": "BTCUSDT_UMCBL"}]
-                ]
-                
-                for endpoint, params in alt_auth_endpoints:
-                    try:
-                        print(f"Trying authenticated endpoint: {endpoint}")
-                        auth_response = self._request("GET", endpoint, params=params)
-                        print(f"Authentication successful with endpoint {endpoint}!")
-                        return True
-                    except Exception:
-                        continue
-                        
+        print("\n===== Testing Bitget API Connection =====")
+        
+        # First try to find a working API endpoint if needed
+        if not self.ping_api():
+            print("Unable to connect to API with current base URL. Trying to find working URL...")
+            if not self.try_alternate_base_urls():
+                print("❌ Could not find a working Bitget API endpoint.")
                 return False
+        
+        print(f"Using API base URL: {self.base_url}")
+        
+        # Now test authentication with the working base URL
+        try:
+            # Try to get server contracts as a simple API call that requires authentication
+            response = self._request("GET", "/market/contracts")
+            print("✅ Authentication test successful!")
+            return True
         except Exception as e:
-            print(f"Authentication test failed: {str(e)}")
+            print(f"❌ Authentication test failed: {str(e)}")
+            
+            # Provide troubleshooting tips
+            print("\nTroubleshooting tips:")
+            print("1. Check your API key, secret, and passphrase for accuracy")
+            print("2. Ensure there's no whitespace in your credentials")
+            print("3. Check if your API key has the necessary permissions")
+            print("4. If you've enabled IP restrictions, ensure your current IP is allowed")
+            print("5. Try creating new API credentials on Bitget")
             return False
