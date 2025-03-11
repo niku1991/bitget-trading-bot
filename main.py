@@ -2,6 +2,7 @@ import json
 import time
 import sys
 import os
+import argparse
 
 from bitget.client import BitgetClient
 from bot.strategy import TradingStrategy
@@ -9,15 +10,17 @@ from bot.risk_manager import RiskManager
 from bot.monitor import MonitoringSystem
 
 class BitgetTradingBot:
-    def __init__(self, config_path="config.json"):
+    def __init__(self, config_path="config.json", debug=True):
         """
         Initialize the trading bot
         
         Parameters:
         - config_path: Path to configuration file
+        - debug: Whether to enable debug output
         """
         # Load configuration
         self.config = self._load_config(config_path)
+        self.debug = debug
         
         # Extract configuration parameters
         api_key = self.config["api_credentials"]["api_key"]
@@ -32,7 +35,7 @@ class BitgetTradingBot:
         trade_opportunities = self.config["trade_opportunities"]
         
         # Initialize components
-        self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=True)
+        self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=True, debug=debug)
         self.strategy = TradingStrategy(self.client, trade_opportunities, risk_per_trade, leverage)
         self.risk_manager = RiskManager(self.client, max_risk_percent, max_positions)
         self.monitoring = MonitoringSystem(self.client)
@@ -49,7 +52,14 @@ class BitgetTradingBot:
         """
         try:
             with open(config_path, 'r') as f:
-                return json.load(f)
+                config = json.load(f)
+                
+                # Validate credentials - make sure they're not empty
+                credentials = config.get("api_credentials", {})
+                if not credentials.get("api_key") or not credentials.get("api_secret") or not credentials.get("passphrase"):
+                    print("WARNING: API credentials are missing or empty. Please update config.json with valid credentials.")
+                
+                return config
         except FileNotFoundError:
             print(f"Configuration file not found: {config_path}")
             sys.exit(1)
@@ -57,6 +67,16 @@ class BitgetTradingBot:
             print(f"Invalid JSON in configuration file: {config_path}")
             sys.exit(1)
     
+    def test_authentication(self):
+        """
+        Test authentication with Bitget API
+        
+        Returns:
+        - True if authentication is successful, False otherwise
+        """
+        print("\n===== Testing Bitget API Authentication =====\n")
+        return self.client.test_authentication()
+
     def start(self):
         """
         Start the trading bot
@@ -66,27 +86,36 @@ class BitgetTradingBot:
         """
         print("\n===== Starting Bitget Trading Bot =====\n")
         
-        # Get account balance
-        balance = self.client.get_account_balance()
-        print(f"Account Balance: {balance:.2f} USDT\n")
-        
-        # Apply risk filters to trades
-        filtered_trades = self.risk_manager.apply_risk_filters(self.strategy.trade_opportunities)
-        
-        if not filtered_trades:
-            print("No trades passed risk filters. Bot will not execute any trades.")
+        # Test authentication first
+        if not self.test_authentication():
+            print("Authentication failed. Please check your API credentials.")
             return
-        
-        print(f"Executing {len(filtered_trades)} trades after risk filtering...\n")
-        
-        # Execute filtered trades
-        results = self.strategy.execute_all_trades(filtered_trades)
-        
-        # Start monitoring system
-        self.monitoring.start_monitoring()
-        
-        print("\nTrading bot is now running and monitoring positions.")
-        return results
+            
+        try:
+            # Get account balance
+            balance = self.client.get_account_balance()
+            print(f"Account Balance: {balance:.2f} USDT\n")
+            
+            # Apply risk filters to trades
+            filtered_trades = self.risk_manager.apply_risk_filters(self.strategy.trade_opportunities)
+            
+            if not filtered_trades:
+                print("No trades passed risk filters. Bot will not execute any trades.")
+                return
+            
+            print(f"Executing {len(filtered_trades)} trades after risk filtering...\n")
+            
+            # Execute filtered trades
+            results = self.strategy.execute_all_trades(filtered_trades)
+            
+            # Start monitoring system
+            self.monitoring.start_monitoring()
+            
+            print("\nTrading bot is now running and monitoring positions.")
+            return results
+        except Exception as e:
+            print(f"Error starting bot: {e}")
+            return None
     
     def stop(self):
         """
@@ -100,12 +129,22 @@ def main():
     """
     Main function to run the trading bot
     """
-    config_path = "config.json"
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Bitget Trading Bot')
+    parser.add_argument('--config', default='config.json', help='Path to configuration file')
+    parser.add_argument('--debug', action='store_true', help='Enable debug output')
+    parser.add_argument('--test-auth', action='store_true', help='Test API authentication and exit')
+    args = parser.parse_args()
     
-    # Initialize and start bot
-    bot = BitgetTradingBot(config_path)
+    # Initialize bot
+    bot = BitgetTradingBot(config_path=args.config, debug=args.debug)
     
     try:
+        # Test authentication if requested
+        if args.test_auth:
+            success = bot.test_authentication()
+            sys.exit(0 if success else 1)
+        
         # Start bot with risk management
         bot.start()
         
@@ -119,6 +158,7 @@ def main():
     except Exception as e:
         print(f"Error running bot: {e}")
         bot.stop()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
