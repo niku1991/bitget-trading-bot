@@ -34,18 +34,11 @@ class BitgetTradingBot:
         
         trade_opportunities = self.config["trade_opportunities"]
         
-        # Initialize client
+        # Initialize components
         self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=True, debug=debug)
-        
-        # Initialize other components (will be done after finding working API endpoint)
-        self.strategy = None
-        self.risk_manager = None
-        self.monitoring = None
-        self.trade_opportunities = trade_opportunities
-        self.risk_per_trade = risk_per_trade
-        self.leverage = leverage
-        self.max_risk_percent = max_risk_percent
-        self.max_positions = max_positions
+        self.strategy = TradingStrategy(self.client, trade_opportunities, risk_per_trade, leverage)
+        self.risk_manager = RiskManager(self.client, max_risk_percent, max_positions)
+        self.monitoring = MonitoringSystem(self.client)
     
     def _load_config(self, config_path):
         """
@@ -74,30 +67,6 @@ class BitgetTradingBot:
             print(f"Invalid JSON in configuration file: {config_path}")
             sys.exit(1)
     
-    def initialize_components(self):
-        """Initialize trading components after API endpoint is confirmed working"""
-        self.strategy = TradingStrategy(self.client, self.trade_opportunities, self.risk_per_trade, self.leverage)
-        self.risk_manager = RiskManager(self.client, self.max_risk_percent, self.max_positions)
-        self.monitoring = MonitoringSystem(self.client)
-    
-    def test_api_connection(self):
-        """
-        Test connection to Bitget API and find working endpoints
-        
-        Returns:
-        - True if connection successful, False otherwise
-        """
-        print("\n===== Testing Bitget API Connection =====\n")
-        success = self.client.try_alternate_base_urls()
-        
-        if success:
-            print(f"Successfully connected to Bitget API at: {self.client.base_url}")
-            return True
-        else:
-            print("Could not connect to any Bitget API endpoint.")
-            print("Please check your internet connection or if Bitget API is accessible from your location.")
-            return False
-    
     def test_authentication(self):
         """
         Test authentication with Bitget API
@@ -107,27 +76,13 @@ class BitgetTradingBot:
         """
         print("\n===== Testing Bitget API Authentication =====\n")
         
-        # First make sure we can connect to the API
-        if not self.test_api_connection():
+        # First try to find working API endpoints
+        print("Searching for the correct Bitget API endpoints...")
+        if not self.client.try_alternate_base_urls():
+            print("Failed to find working API endpoints. Please check Bitget's documentation.")
             return False
             
-        # Now test authentication
-        try:
-            print("Testing authenticated API call...")
-            balance = self.client.get_account_balance()
-            print(f"Authentication successful! Account balance: {balance} USDT")
-            return True
-        except Exception as e:
-            print(f"Authentication test failed: {str(e)}")
-            
-            print("\nTroubleshooting tips:")
-            print("1. Check for whitespace in your API credentials")
-            print("2. Verify you've copied the entire API key, secret, and passphrase")
-            print("3. Try creating a new set of API keys on Bitget")
-            print("4. Ensure your API key has trading permissions enabled")
-            print("5. If using IP restrictions, verify your current IP is allowed")
-            
-            return False
+        return self.client.test_authentication()
 
     def start(self):
         """
@@ -138,13 +93,10 @@ class BitgetTradingBot:
         """
         print("\n===== Starting Bitget Trading Bot =====\n")
         
-        # Test API connection and authentication first
+        # Test authentication first
         if not self.test_authentication():
             print("Authentication failed. Please check your API credentials.")
             return
-            
-        # Initialize components now that we have a working API endpoint
-        self.initialize_components()
             
         try:
             # Get account balance
@@ -177,8 +129,7 @@ class BitgetTradingBot:
         Stop the trading bot
         """
         print("\nStopping trading bot...")
-        if self.monitoring:
-            self.monitoring.stop_monitoring()
+        self.monitoring.stop_monitoring()
         print("Trading bot stopped.")
 
 def main():
@@ -190,18 +141,12 @@ def main():
     parser.add_argument('--config', default='config.json', help='Path to configuration file')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     parser.add_argument('--test-auth', action='store_true', help='Test API authentication and exit')
-    parser.add_argument('--test-connection', action='store_true', help='Test API connection and exit')
     args = parser.parse_args()
     
     # Initialize bot
     bot = BitgetTradingBot(config_path=args.config, debug=args.debug)
     
     try:
-        # Test API connection if requested
-        if args.test_connection:
-            success = bot.test_api_connection()
-            sys.exit(0 if success else 1)
-            
         # Test authentication if requested
         if args.test_auth:
             success = bot.test_authentication()
