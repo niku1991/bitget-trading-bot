@@ -7,7 +7,7 @@ import json
 from urllib.parse import urlencode
 
 class BitgetClient:
-    def __init__(self, api_key, api_secret, passphrase, is_futures=True):
+    def __init__(self, api_key, api_secret, passphrase, is_futures=True, debug=True):
         """
         Initialize the Bitget API client
         
@@ -16,10 +16,12 @@ class BitgetClient:
         - api_secret: Your Bitget API secret
         - passphrase: Your Bitget API passphrase
         - is_futures: Whether to use futures API (True) or spot API (False)
+        - debug: Whether to enable debug output
         """
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.passphrase = passphrase
+        self.api_key = api_key.strip()  # Strip to remove any whitespace
+        self.api_secret = api_secret.strip()
+        self.passphrase = passphrase.strip()
+        self.debug = debug
         
         # Base URL for API endpoints
         if is_futures:
@@ -42,10 +44,16 @@ class BitgetClient:
         Returns:
         - Base64 encoded signature
         """
-        message = str(timestamp) + method.upper() + request_path
-        if body:
-            message += json.dumps(body)
+        # For empty body, use empty string instead of JSON
+        body_str = json.dumps(body) if body else ''
+        
+        # Construct the message (method must be uppercase)
+        message = str(timestamp) + method.upper() + request_path + body_str
+        
+        if self.debug:
+            print(f"DEBUG: Signature message: {message}")
             
+        # Generate the HMAC-SHA256 signature
         signature = base64.b64encode(
             hmac.new(
                 self.api_secret.encode('utf-8'),
@@ -73,6 +81,7 @@ class BitgetClient:
         timestamp = str(int(time.time() * 1000))
         
         # Add query parameters to URL if provided
+        query_string = ""
         if params:
             query_string = urlencode(params)
             url = url + '?' + query_string
@@ -89,19 +98,47 @@ class BitgetClient:
             'Content-Type': 'application/json'
         }
         
-        # Make request
-        response = self.session.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=data
-        )
+        # Debug logging
+        if self.debug:
+            print(f"\nDEBUG: Request: {method} {url}")
+            print(f"DEBUG: Timestamp: {timestamp}")
+            print(f"DEBUG: Headers:")
+            print(f"  ACCESS-KEY: {self.api_key}")
+            print(f"  ACCESS-SIGN: {signature}")
+            print(f"  ACCESS-TIMESTAMP: {timestamp}")
+            print(f"  ACCESS-PASSPHRASE: {self.passphrase[:3]}{'*' * (len(self.passphrase) - 3)}")  # Show only first 3 chars
+            if data:
+                print(f"DEBUG: Data: {json.dumps(data)}")
         
-        # Handle response
-        if response.status_code == 200:
-            return response.json()
-        else:
-            error_message = f"API request failed: {response.text}"
+        # Make request
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=data
+            )
+            
+            # Debug response
+            if self.debug:
+                print(f"DEBUG: Response status: {response.status_code}")
+                print(f"DEBUG: Response body: {response.text[:2000]}")  # Limit to 2000 chars
+            
+            # Handle response
+            if response.status_code == 200:
+                resp_json = response.json()
+                if resp_json.get('code') != '00000' and 'code' in resp_json:
+                    error_message = f"API request failed: {response.text}"
+                    print(error_message)
+                    raise Exception(error_message)
+                return resp_json
+            else:
+                error_message = f"API request failed: {response.text}"
+                print(error_message)
+                raise Exception(error_message)
+                
+        except requests.exceptions.RequestException as e:
+            error_message = f"Request error: {str(e)}"
             print(error_message)
             raise Exception(error_message)
     
@@ -243,3 +280,19 @@ class BitgetClient:
         - List of pending orders
         """
         return self._request("GET", "/order/pending")
+    
+    def test_authentication(self):
+        """
+        Test API authentication
+        
+        Returns:
+        - True if authentication is successful, False otherwise
+        """
+        try:
+            # Try to get server time as a simple API call that requires authentication
+            response = self._request("GET", "/market/time")
+            print("Authentication test successful!")
+            return True
+        except Exception as e:
+            print(f"Authentication test failed: {str(e)}")
+            return False
