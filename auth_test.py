@@ -6,7 +6,6 @@ This can be used to quickly verify if your API credentials are working properly.
 
 import json
 import sys
-import time
 from bitget.client import BitgetClient
 
 def load_config(config_path='config.json'):
@@ -23,7 +22,7 @@ def load_config(config_path='config.json'):
 
 def test_authentication(config_path='config.json'):
     """Test authentication with Bitget API"""
-    print("\n===== Bitget API Authentication Test =====\n")
+    print("\n===== Testing Bitget API Authentication =====\n")
     
     # Load credentials from config
     config = load_config(config_path)
@@ -33,12 +32,6 @@ def test_authentication(config_path='config.json'):
     api_key = credentials.get('api_key', '')
     api_secret = credentials.get('api_secret', '')
     passphrase = credentials.get('passphrase', '')
-    
-    # Check for empty credentials
-    if not api_key or not api_secret or not passphrase:
-        print("❌ One or more API credentials are missing or empty in your config file.")
-        print("Please check your config.json file and ensure all credentials are provided.")
-        return False
     
     print(f"API Key: {api_key[:4]}{'*' * (len(api_key) - 4)}")
     print(f"API Secret: {api_secret[:4]}{'*' * (len(api_secret) - 4)}")
@@ -53,72 +46,67 @@ def test_authentication(config_path='config.json'):
         debug=True
     )
     
-    # Connect to the Bitget API
-    if not client.ping_api():
-        print("\nUnable to connect to Bitget API with initial base URL.")
-        print("Attempting to find a working API endpoint...")
-        
-        if not client.try_alternate_base_urls():
-            print("\n❌ Could not connect to any Bitget API endpoints.")
-            print("This could indicate:")
-            print("1. Network connectivity issues")
-            print("2. Bitget's API endpoints have significantly changed")
-            print("3. Bitget servers might be experiencing issues")
-            return False
+    # First attempt to find a working API endpoint
+    if not client.try_alternate_base_urls():
+        print("\n❌ Failed to find a working Bitget API endpoint.")
+        print("Please check if Bitget has changed their API structure.")
+        print("Visit Bitget's developer documentation for the latest API information.")
+        return False
     
-    print(f"\nUsing Bitget API base URL: {client.base_url}")
-    
-    # Try full authentication
+    # Now try authentication
     try:
-        # First try to connect to a public endpoint
-        print("\nTesting connection to public endpoints...")
-        start_time = time.time()
-        client.ping_api()
-        end_time = time.time()
-        latency = (end_time - start_time) * 1000  # Convert to milliseconds
-        print(f"✅ Successfully connected to Bitget API (latency: {latency:.2f}ms)")
+        # Try an account endpoint that requires API key
+        print("\n===== Testing account API call with authentication =====")
+        response = client._request("GET", "/account/accounts", params={"productType": "umcbl"})
         
-        # Now test authenticated access
-        print("\nTesting authenticated API access...")
-        try:
-            balance = client.get_account_balance()
-            print(f"✅ Authentication successful! Account balance: {balance:.6f} USDT")
-            
-            print("\nAdditional connection info:")
-            print(f"- API Base URL: {client.base_url}")
-            print(f"- Connection Latency: {latency:.2f}ms")
-            
-            print("\n✅ All tests passed! Your API credentials are working correctly.")
-            return True
-        except Exception as e:
-            print(f"\n❌ Authentication failed when trying to access account information.")
-            print(f"Error: {str(e)}")
-            print("\nThis usually indicates:")
-            print("1. Your API key, secret, or passphrase is incorrect")
-            print("2. Your API key doesn't have permission to access account information")
-            print("3. IP restrictions are preventing access (if enabled)")
-            return False
-            
+        print("\nAccount API call successful:")
+        print(f"Response: {str(response)[:500]}...")  # Truncate for readability
+        
+        # Show account balance if available
+        for acct in response.get('data', []):
+            if acct.get('marginCoin') == 'USDT':
+                print(f"\nAccount USDT Balance: {acct.get('available', 'N/A')}")
+                break
+        
+        print("\n✅ Authentication successful! Your API credentials are working correctly.")
+        return True
     except Exception as e:
-        print("\n❌ Connection to Bitget API failed!")
-        print(f"Error: {str(e)}")
+        print("\n❌ Authentication failed!")
+        print(f"Error: {e}")
         
         print("\nTroubleshooting tips:")
-        print("1. Check your internet connection")
-        print("2. Verify Bitget services are operational (check their status page)")
-        print("3. Try again later if this appears to be a temporary issue")
+        print("1. Check for whitespace in your API credentials")
+        print("2. Verify you've copied the entire API key, secret, and passphrase")
+        print("3. Try creating a new set of API keys on Bitget")
+        print("4. Ensure your API key has trading permissions enabled")
+        print("5. If using IP restrictions, verify your current IP is allowed")
+        
+        # Suggest inspecting error details
+        if "40012" in str(e):
+            print("\nThe error '40012' (apikey/password is incorrect) suggests:")
+            print("- Your API key or passphrase is not recognized by Bitget")
+            print("- Your credentials might be from a different Bitget account")
+            print("- Your API key might have been deleted or expired")
+        elif "40009" in str(e):
+            print("\nThe error '40009' (sign signature error) suggests:")
+            print("- Your API secret might be incorrect")
+            print("- Your system time might be out of sync with Bitget's servers")
+            print("- There might be encoding or invisible character issues with your secret")
+        elif "40404" in str(e):
+            print("\nThe error '40404' (URL not found) suggests:")
+            print("- Bitget may have changed their API structure")
+            print("- The API endpoint being used might be deprecated")
+            print("- You might need to use a different API version")
+        
         return False
 
-def main():
-    """Main function"""
+if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Test Bitget API authentication')
     parser.add_argument('--config', default='config.json', help='Path to configuration file')
+    parser.add_argument('--debug', action='store_true', help='Enable even more detailed debug output')
     args = parser.parse_args()
     
     success = test_authentication(args.config)
     sys.exit(0 if success else 1)
-
-if __name__ == "__main__":
-    main()
