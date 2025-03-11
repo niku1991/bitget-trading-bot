@@ -10,17 +10,19 @@ from bot.risk_manager import RiskManager
 from bot.monitor import MonitoringSystem
 
 class BitgetTradingBot:
-    def __init__(self, config_path="config.json", debug=True):
+    def __init__(self, config_path="config.json", debug=True, is_futures=True):
         """
         Initialize the trading bot
         
         Parameters:
         - config_path: Path to configuration file
         - debug: Whether to enable debug output
+        - is_futures: Whether to use futures API (True) or spot API (False)
         """
         # Load configuration
         self.config = self._load_config(config_path)
         self.debug = debug
+        self.is_futures = is_futures
         
         # Extract configuration parameters
         api_key = self.config["api_credentials"]["api_key"]
@@ -34,15 +36,8 @@ class BitgetTradingBot:
         
         trade_opportunities = self.config["trade_opportunities"]
         
-        # Initialize client
-        self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=True, debug=debug)
-        
-        # Find a working API endpoint before proceeding
-        if not self.find_working_endpoint():
-            print("Failed to find a working Bitget API endpoint. Bot initialization incomplete.")
-            return
-            
         # Initialize components
+        self.client = BitgetClient(api_key, api_secret, passphrase, is_futures=is_futures, debug=debug)
         self.strategy = TradingStrategy(self.client, trade_opportunities, risk_per_trade, leverage)
         self.risk_manager = RiskManager(self.client, max_risk_percent, max_positions)
         self.monitoring = MonitoringSystem(self.client)
@@ -64,25 +59,15 @@ class BitgetTradingBot:
                 # Validate credentials - make sure they're not empty
                 credentials = config.get("api_credentials", {})
                 if not credentials.get("api_key") or not credentials.get("api_secret") or not credentials.get("passphrase"):
-                    print("WARNING: API credentials are missing or empty. Please update config.json with valid credentials.")
+                    print("⚠️  WARNING: API credentials are missing or empty. Please update config.json with valid credentials.")
                 
                 return config
         except FileNotFoundError:
-            print(f"Configuration file not found: {config_path}")
+            print(f"❌ Configuration file not found: {config_path}")
             sys.exit(1)
         except json.JSONDecodeError:
-            print(f"Invalid JSON in configuration file: {config_path}")
+            print(f"❌ Invalid JSON in configuration file: {config_path}")
             sys.exit(1)
-    
-    def find_working_endpoint(self):
-        """
-        Find a working API endpoint for Bitget
-        
-        Returns:
-        - True if a working endpoint was found, False otherwise
-        """
-        print("\n===== Finding Working Bitget API Endpoint =====")
-        return self.client.try_alternate_base_urls()
     
     def test_authentication(self):
         """
@@ -91,7 +76,7 @@ class BitgetTradingBot:
         Returns:
         - True if authentication is successful, False otherwise
         """
-        print("\n===== Testing Bitget API Authentication =====")
+        print("\n===== Testing Bitget API Authentication =====\n")
         return self.client.test_authentication()
 
     def start(self):
@@ -105,7 +90,9 @@ class BitgetTradingBot:
         
         # Test authentication first
         if not self.test_authentication():
-            print("Authentication failed. Please check your API credentials.")
+            print("❌ Authentication failed. Please check your API credentials.")
+            print("\nTry running the authentication test script for more details:")
+            print("  python auth_test.py --debug")
             return
             
         try:
@@ -131,7 +118,7 @@ class BitgetTradingBot:
             print("\nTrading bot is now running and monitoring positions.")
             return results
         except Exception as e:
-            print(f"Error starting bot: {e}")
+            print(f"❌ Error starting bot: {e}")
             return None
     
     def stop(self):
@@ -151,23 +138,20 @@ def main():
     parser.add_argument('--config', default='config.json', help='Path to configuration file')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     parser.add_argument('--test-auth', action='store_true', help='Test API authentication and exit')
-    parser.add_argument('--find-endpoints', action='store_true', help='Only find working endpoints and exit')
+    parser.add_argument('--spot', action='store_true', help='Use spot API instead of futures API')
     args = parser.parse_args()
     
     try:
         # Initialize bot
-        bot = BitgetTradingBot(config_path=args.config, debug=args.debug)
+        bot = BitgetTradingBot(
+            config_path=args.config, 
+            debug=args.debug,
+            is_futures=not args.spot
+        )
         
-        # Test endpoint discovery if requested
-        if args.find_endpoints:
-            success = bot.find_working_endpoint()
-            print(f"Endpoint discovery {'successful' if success else 'failed'}")
-            sys.exit(0 if success else 1)
-            
         # Test authentication if requested
         if args.test_auth:
             success = bot.test_authentication()
-            print(f"Authentication test {'successful' if success else 'failed'}")
             sys.exit(0 if success else 1)
         
         # Start bot with risk management
@@ -181,8 +165,9 @@ def main():
         # Stop bot on Ctrl+C
         if 'bot' in locals():
             bot.stop()
+        print("\nBot terminated by user.")
     except Exception as e:
-        print(f"Error running bot: {e}")
+        print(f"❌ Error running bot: {e}")
         if 'bot' in locals():
             bot.stop()
         sys.exit(1)
