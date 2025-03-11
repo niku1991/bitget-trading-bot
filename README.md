@@ -9,6 +9,7 @@ Automated trading bot for Bitget cryptocurrency exchange based on market analysi
 - **Partial Take-Profit Strategy**: Takes profit at 50% of target and moves stop-loss to break-even
 - **Position Monitoring**: Tracks positions and provides alerts, especially as they approach the 24-hour mark
 - **Trade Prioritization**: Executes trades based on confidence levels when there are limited position slots
+- **Authentication Testing**: Includes tools to verify API credentials before executing trades
 
 ## Trade Opportunities
 
@@ -38,21 +39,56 @@ pip install -r requirements.txt
    - Edit the `config.json` file and add your API key, secret, and passphrase
    - Adjust trading parameters if needed
 
+## Authentication Testing
+
+Before running the bot, it's recommended to test your API credentials:
+
+```bash
+python auth_test.py
+```
+
+This script will verify that your API credentials are working correctly by making a simple API call to Bitget. If successful, you'll see your account balance displayed.
+
+Common authentication errors include:
+- **apikey/password is incorrect** (code 40012): Check your API key and passphrase
+- **sign signature error** (code 40009): Check your API secret key
+
+If you encounter authentication issues, try the following:
+1. Make sure there's no leading/trailing whitespace in your credentials
+2. Create new API credentials on Bitget and update your config.json file
+3. Ensure your API key has trading permissions enabled
+4. If you've enabled IP restrictions, make sure your current IP is allowed
+
 ## Usage
 
-Run the bot with:
+Run the bot in debug mode to see detailed API requests and responses:
+
 ```bash
-python main.py
+python main.py --debug
 ```
 
 The bot will:
-1. Connect to Bitget using your API credentials
-2. Check account balance and apply risk filters
-3. Place entry, take-profit, and stop-loss orders for filtered trades
-4. Monitor positions continuously and provide updates
-5. Alert you when positions approach the 24-hour time limit
+1. Test your API credentials
+2. Connect to Bitget and check account balance
+3. Apply risk filters to determine which trades to execute
+4. Place entry, take-profit, and stop-loss orders for filtered trades
+5. Monitor positions continuously and provide updates
+6. Alert you when positions approach the 24-hour time limit
 
 To stop the bot, press `Ctrl+C`.
+
+## Command Line Options
+
+The bot supports several command line options:
+
+```bash
+python main.py --help
+```
+
+Available options:
+- `--config PATH`: Specify an alternative config file path
+- `--debug`: Enable detailed API debugging output
+- `--test-auth`: Only test authentication and exit
 
 ## Risk Management Strategy
 
@@ -69,6 +105,24 @@ The bot implements several risk management features:
 - **API Key Permissions**: Create API keys with trading permissions only, not withdrawal permissions
 - **IP Restriction**: Consider restricting API keys to specific IP addresses
 - **Start Small**: Begin with small position sizes to verify bot behavior
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. **Authentication Errors**:
+   - Use `auth_test.py` to diagnose API credential issues
+   - Ensure no whitespace in credentials
+   - Try creating new API keys on Bitget
+
+2. **Order Placement Errors**:
+   - Verify you have sufficient funds in your account
+   - Check that the symbol name is correct (e.g., "DOGEUSDT_UMCBL")
+   - Ensure position size is above the minimum for the symbol
+
+3. **Other Issues**:
+   - Run with `--debug` flag to see detailed API requests and responses
+   - Check Bitget's API documentation for any recent changes
 
 ## Modifying Trade Opportunities
 
