@@ -153,8 +153,11 @@ class BotService:
         return temp.client
 
     def summary(self):
+        # Do not attempt network if bot is not running; render fast
+        if not self._bot:
+            return 0.0, 0, 0
         try:
-            client = self.ensure_client()
+            client = self._bot.client
             bal = client.get_account_balance()
             pos = client.get_positions()
             orders = client.get_pending_orders()
@@ -234,10 +237,29 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(html.encode('utf-8'))
 
     def do_GET(self):
-        if self.path.startswith('/'):  # Single page
-            self._render()
-        else:
-            self.send_error(404)
+        try:
+            if self.path.startswith('/health'):
+                body = b'OK'
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if self.path.startswith('/'):
+                self._render()
+            else:
+                self.send_error(404)
+        except Exception as e:
+            body = f"Server error: {e}".encode('utf-8')
+            self.send_response(500)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except Exception:
+                pass
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
