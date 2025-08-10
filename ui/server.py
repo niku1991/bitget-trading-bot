@@ -282,4 +282,9 @@ def run(host: str = '0.0.0.0', port: int = 8000):
     httpd.serve_forever()
 
 if __name__ == '__main__':
-    run()
+    import argparse
+    parser = argparse.ArgumentParser(description='Bitget Bot UI Server')
+    parser.add_argument('--host', default=os.getenv('UI_HOST', '0.0.0.0'), help='Host to bind')
+    parser.add_argument('--port', type=int, default=int(os.getenv('UI_PORT', '8000')), help='Port to bind')
+    args = parser.parse_args()
+    run(args.host, args.port)
