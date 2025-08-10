@@ -308,6 +308,12 @@ def main():
     parser.add_argument('--bt-score-grid', type=str, default='0.5,0.6,0.7,0.8', help='Comma-separated score thresholds to test')
     parser.add_argument('--bt-risk-grid', type=str, default='2,4,6,8,10', help='Comma-separated risk per trade values to test')
     parser.add_argument('--risk-per-trade', type=float, default=None, help='Override risk per trade (USD) for this run')
+    parser.add_argument('--bt-starting-balance', type=float, default=1000.0, help='Starting balance for backtest')
+    parser.add_argument('--bt-risk-mode', type=str, default='usd', choices=['usd','pct'], help='Risk per trade mode: usd or pct')
+    parser.add_argument('--bt-fee-bps', type=float, default=2.0, help='Fee (basis points) per side on notional')
+    parser.add_argument('--bt-slip-bps', type=float, default=1.0, help='Slippage (basis points) each side')
+    parser.add_argument('--bt-dd-stop', type=float, default=None, help='Max drawdown stop in percent (test will stop when exceeded)')
+    parser.add_argument('--bt-max-trades', type=int, default=None, help='Limit the number of trades during backtest')
     args = parser.parse_args()
     
     # Initialize bot
@@ -342,11 +348,29 @@ def main():
             symbols = [s.strip() for s in (args.bt_symbols or ','.join([t['symbol'] for t in bot.trade_opportunities])).split(',') if s.strip()]
             score_grid = [float(x) for x in args.bt_score_grid.split(',') if x]
             risk_grid = [float(x) for x in args.bt_risk_grid.split(',') if x]
-            report = backtest_grid(bot.client, symbols, granularity=args.bt_granularity, window=args.bt_window, horizon=args.bt_horizon, threshold_pct=args.bt_label_thr, score_grid=score_grid, risk_grid=risk_grid, leverage=bot.leverage)
+            report = backtest_grid(
+                bot.client, symbols,
+                granularity=args.bt_granularity,
+                window=args.bt_window,
+                horizon=args.bt_horizon,
+                threshold_pct=args.bt_label_thr,
+                score_grid=score_grid,
+                risk_grid=risk_grid,
+                leverage=bot.leverage,
+                starting_balance=args.bt_starting_balance,
+                risk_mode=args.bt_risk_mode,
+                fee_bps=args.bt_fee_bps,
+                slippage_bps=args.bt_slip_bps,
+                dd_stop_pct=args.bt_dd_stop,
+                max_trades=args.bt_max_trades
+            )
             best = report['best']
             print("\n=== Backtest Best Config ===")
-            print(f"threshold={best['threshold']}, risk_per_trade={best['risk_per_trade']}")
-            print(f"trades={best['trades']}, win_rate={best['win_rate']:.2f}, total_pnl={best['total_pnl']:.2f}, max_dd={best['max_drawdown']:.2f}, sharpe_like={best['sharpe_like']:.2f}")
+            print(f"threshold={best['threshold']}, risk_per_trade={best['risk_per_trade']} ({best['risk_mode']})")
+            print(f"trades={best['trades']}, win_rate={best['win_rate']:.2f}")
+            print(f"total_pnl={best['total_pnl']:.2f}, final_equity={best['final_equity']:.2f}, return_pct={best['return_pct']:.2f}%")
+            print(f"max_dd={best['max_drawdown']:.2f}, max_dd_pct={best['max_drawdown_pct']:.2f}%")
+            print(f"best_trade={best['best_trade']:.2f}, worst_trade={best['worst_trade']:.2f}, sharpe_like={best['sharpe_like']:.2f}")
             sys.exit(0)
 
         # Summary action
