@@ -2,19 +2,21 @@ import time
 import threading
 
 class MonitoringSystem:
-    def __init__(self, client, check_interval=60):
+    def __init__(self, client, check_interval=60, on_event_callback=None):
         """
         Initialize the monitoring system
         
         Parameters:
         - client: BitgetClient instance
         - check_interval: Interval between checks in seconds
+        - on_event_callback: Optional function(event_dict) for logging/learning
         """
         self.client = client
         self.check_interval = check_interval  # Seconds between checks
         self.active_trades = {}
         self.running = False
         self.monitor_thread = None
+        self.on_event_callback = on_event_callback
     
     def start_monitoring(self):
         """
@@ -70,6 +72,14 @@ class MonitoringSystem:
                         "size": size,
                         "entry_time": time.time()
                     }
+                    if self.on_event_callback:
+                        self.on_event_callback({
+                            "type": "position_open",
+                            "symbol": symbol,
+                            "entry_price": entry_price,
+                            "size": size,
+                            "ts": time.time()
+                        })
                 
                 # Calculate current metrics
                 duration = time.time() - self.active_trades[symbol]["entry_time"]
@@ -91,10 +101,28 @@ class MonitoringSystem:
                     print(f"Duration: {duration_hours:.2f} hours")
                     print(f"Entry: {entry_price}, Current: {current_price}")
                     print(f"P&L: {unrealized_pnl:.2f} USDT ({price_change_pct:.2f}%)\n")
+                    if self.on_event_callback:
+                        self.on_event_callback({
+                            "type": "position_update",
+                            "symbol": symbol,
+                            "entry_price": entry_price,
+                            "current_price": current_price,
+                            "unrealized_pnl": unrealized_pnl,
+                            "duration_hours": duration_hours,
+                            "ts": time.time()
+                        })
             
             elif symbol in self.active_trades:
                 # Position closed
                 print(f"\nPosition closed for {symbol}\n")
+                if self.on_event_callback:
+                    self.on_event_callback({
+                        "type": "position_closed",
+                        "symbol": symbol,
+                        "entry_price": self.active_trades[symbol]["entry_price"],
+                        "size": self.active_trades[symbol]["size"],
+                        "ts": time.time()
+                    })
                 del self.active_trades[symbol]
     
     def check_orders(self):
@@ -115,3 +143,19 @@ class MonitoringSystem:
                 
                 print(f"{symbol}: {side} {size} @ {price} ({order_type})")
             print()
+         
+        # Emit events
+        if self.on_event_callback and orders['data']:
+            for order in orders['data']:
+                try:
+                    self.on_event_callback({
+                        "type": "order_pending",
+                        "symbol": order.get('symbol'),
+                        "side": order.get('side'),
+                        "price": order.get('price'),
+                        "size": order.get('size'),
+                        "order_type": order.get('orderType'),
+                        "ts": time.time()
+                    })
+                except Exception:
+                    pass
