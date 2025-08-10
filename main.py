@@ -11,6 +11,9 @@ from bot.monitor import MonitoringSystem
 from bot import default_event_logger
 import sqlite3
 import math
+from ai.train import train_model
+from ai.backtest import backtest_grid
+from ai.infer import load_model, predict_score
 
 class BitgetTradingBot:
     def __init__(self, config_path="config.json", debug=True, dry_run=True, min_ai_score=0.0):
@@ -135,6 +138,13 @@ class BitgetTradingBot:
         Simple baseline predictor: momentum score based on last N closes and volatility penalty.
         Returns a score in [0,1].
         """
+        # Prefer trained model if available
+        try:
+            if os.path.exists("ai_model.json"):
+                model = load_model("ai_model.json")
+                return predict_score(model, candles)
+        except Exception as e:
+            print(f"Model load/predict failed, falling back to naive predictor: {e}")
         if not candles or len(candles) < 20:
             return 0.5
         closes = [c["close"] for c in candles[-50:]]
@@ -288,10 +298,22 @@ def main():
     parser.add_argument('--min-ai-score', type=float, default=0.0, help='Minimum AI score [0-1] required to execute a trade')
     parser.add_argument('--summary', action='store_true', help='Show quick portfolio summary and exit')
     parser.add_argument('--cancel-all', action='store_true', help='Cancel all pending orders and exit')
+    parser.add_argument('--train-model', action='store_true', help='Train AI model from recent candles and save to ai_model.json')
+    parser.add_argument('--backtest', action='store_true', help='Run backtest to optimize score threshold and risk sizing')
+    parser.add_argument('--bt-symbols', type=str, default='', help='Comma-separated symbols for training/backtesting')
+    parser.add_argument('--bt-granularity', type=str, default='15m', help='Candle granularity for backtest')
+    parser.add_argument('--bt-window', type=int, default=50, help='Feature window size')
+    parser.add_argument('--bt-horizon', type=int, default=12, help='Prediction horizon in bars')
+    parser.add_argument('--bt-label-thr', type=float, default=0.5, help='Label threshold percent for positive class')
+    parser.add_argument('--bt-score-grid', type=str, default='0.5,0.6,0.7,0.8', help='Comma-separated score thresholds to test')
+    parser.add_argument('--bt-risk-grid', type=str, default='2,4,6,8,10', help='Comma-separated risk per trade values to test')
+    parser.add_argument('--risk-per-trade', type=float, default=None, help='Override risk per trade (USD) for this run')
     args = parser.parse_args()
     
     # Initialize bot
     bot = BitgetTradingBot(config_path=args.config, debug=args.debug, dry_run=not args.live, min_ai_score=args.min_ai_score)
+    if args.risk_per_trade is not None:
+        bot.risk_per_trade = float(args.risk_per_trade)
     
     try:
         # Test connectivity if requested
@@ -303,6 +325,29 @@ def main():
         if args.test_auth:
             success = bot.test_authentication()
             sys.exit(0 if success else 1)
+
+        # Train model
+        if args.train_model:
+            if not bot.verify_connectivity() or not bot.test_authentication():
+                sys.exit(1)
+            symbols = [s.strip() for s in (args.bt_symbols or ','.join([t['symbol'] for t in bot.trade_opportunities])).split(',') if s.strip()]
+            path = train_model(bot.client, symbols, granularity=args.bt_granularity, window=args.bt_window, horizon=args.bt_horizon, threshold_pct=args.bt_label_thr)
+            print(f"Model saved to {path}")
+            sys.exit(0)
+
+        # Backtest optimize
+        if args.backtest:
+            if not bot.verify_connectivity() or not bot.test_authentication():
+                sys.exit(1)
+            symbols = [s.strip() for s in (args.bt_symbols or ','.join([t['symbol'] for t in bot.trade_opportunities])).split(',') if s.strip()]
+            score_grid = [float(x) for x in args.bt_score_grid.split(',') if x]
+            risk_grid = [float(x) for x in args.bt_risk_grid.split(',') if x]
+            report = backtest_grid(bot.client, symbols, granularity=args.bt_granularity, window=args.bt_window, horizon=args.bt_horizon, threshold_pct=args.bt_label_thr, score_grid=score_grid, risk_grid=risk_grid, leverage=bot.leverage)
+            best = report['best']
+            print("\n=== Backtest Best Config ===")
+            print(f"threshold={best['threshold']}, risk_per_trade={best['risk_per_trade']}")
+            print(f"trades={best['trades']}, win_rate={best['win_rate']:.2f}, total_pnl={best['total_pnl']:.2f}, max_dd={best['max_drawdown']:.2f}, sharpe_like={best['sharpe_like']:.2f}")
+            sys.exit(0)
 
         # Summary action
         if args.summary:
