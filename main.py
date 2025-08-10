@@ -14,6 +14,11 @@ import math
 from ai.train import train_model
 from ai.backtest import backtest_grid
 from ai.infer import load_model, predict_score
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present
+load_dotenv()
 
 class BitgetTradingBot:
     def __init__(self, config_path="config.json", debug=True, dry_run=True, min_ai_score=0.0):
@@ -72,10 +77,21 @@ class BitgetTradingBot:
             with open(config_path, 'r') as f:
                 config = json.load(f)
                 
+                # Overlay environment variables if present
+                env_api_key = os.getenv("BITGET_API_KEY")
+                env_api_secret = os.getenv("BITGET_API_SECRET")
+                env_passphrase = os.getenv("BITGET_PASSPHRASE")
+                if env_api_key:
+                    config.setdefault("api_credentials", {})["api_key"] = env_api_key
+                if env_api_secret:
+                    config.setdefault("api_credentials", {})["api_secret"] = env_api_secret
+                if env_passphrase:
+                    config.setdefault("api_credentials", {})["passphrase"] = env_passphrase
+                
                 # Validate credentials - make sure they're not empty
                 credentials = config.get("api_credentials", {})
                 if not credentials.get("api_key") or not credentials.get("api_secret") or not credentials.get("passphrase"):
-                    print("WARNING: API credentials are missing or empty. Please update config.json with valid credentials.")
+                    print("WARNING: API credentials are missing or empty. Please set BITGET_API_KEY/SECRET/PASSPHRASE env vars or update config.json with valid credentials.")
                 
                 return config
         except FileNotFoundError:
@@ -314,6 +330,7 @@ def main():
     parser.add_argument('--bt-slip-bps', type=float, default=1.0, help='Slippage (basis points) each side')
     parser.add_argument('--bt-dd-stop', type=float, default=None, help='Max drawdown stop in percent (test will stop when exceeded)')
     parser.add_argument('--bt-max-trades', type=int, default=None, help='Limit the number of trades during backtest')
+    parser.add_argument('--auto-connect', action='store_true', help='Automatically find API endpoint and test authentication, then exit')
     args = parser.parse_args()
     
     # Initialize bot
@@ -331,6 +348,14 @@ def main():
         if args.test_auth:
             success = bot.test_authentication()
             sys.exit(0 if success else 1)
+
+        # Auto connect: verify connectivity and auth in one step
+        if args.auto_connect:
+            ok = bot.verify_connectivity()
+            if not ok:
+                sys.exit(1)
+            ok = bot.test_authentication()
+            sys.exit(0 if ok else 1)
 
         # Train model
         if args.train_model:
