@@ -349,7 +349,71 @@ class BitgetClient:
             if acct['marginCoin'] == 'USDT':
                 return float(acct['available'])
         return 0.0
-    
+
+    def ping_api(self):
+        """
+        Test if the API is reachable via a public endpoint.
+
+        Returns True on success, False otherwise.
+        """
+        try:
+            endpoint = "/public/time"
+            self._request("GET", endpoint, skip_auth=True)
+            return True
+        except Exception:
+            return False
+
+    def get_candles(self, symbol, granularity="1m", limit=200):
+        """
+        Fetch historical candles for a symbol.
+
+        Parameters:
+        - symbol: Trading pair symbol (e.g., "DOGEUSDT_UMCBL")
+        - granularity: Candle interval. Common values: "1m", "5m", "15m", "1h", "4h", "1d"
+        - limit: Number of candles to fetch (max depends on API)
+
+        Returns:
+        - List of candles where each item is a dict with keys: ts, open, high, low, close, volume
+        """
+        # Bitget futures market candles endpoint; API paths may vary across versions
+        # This uses a commonly available path pattern consistent with other market endpoints in this client
+        endpoint = "/market/candles"
+        params = {"symbol": symbol, "granularity": granularity, "limit": str(limit)}
+        resp = self._request("GET", endpoint, params=params, skip_auth=True)
+
+        data = resp.get("data", [])
+        normalized = []
+        for item in data:
+            # Support both array and dict responses to be robust to API changes
+            if isinstance(item, (list, tuple)) and len(item) >= 6:
+                ts, open_p, high_p, low_p, close_p, volume = item[:6]
+            elif isinstance(item, dict):
+                ts = item.get("ts") or item.get("timestamp")
+                open_p = item.get("open")
+                high_p = item.get("high")
+                low_p = item.get("low")
+                close_p = item.get("close")
+                volume = item.get("volume")
+            else:
+                continue
+
+            try:
+                normalized.append({
+                    "ts": int(ts),
+                    "open": float(open_p),
+                    "high": float(high_p),
+                    "low": float(low_p),
+                    "close": float(close_p),
+                    "volume": float(volume)
+                })
+            except Exception:
+                # Skip malformed entries
+                continue
+
+        # Sort ascending by timestamp
+        normalized.sort(key=lambda x: x["ts"])
+        return normalized
+
     def get_pending_orders(self):
         """
         Get pending orders
@@ -358,6 +422,41 @@ class BitgetClient:
         - List of pending orders
         """
         return self._request("GET", "/order/pending")
+
+    def cancel_order(self, symbol, order_id):
+        """
+        Cancel a single pending order by ID.
+
+        Parameters:
+        - symbol: Trading pair symbol
+        - order_id: The order ID
+
+        Returns API response JSON.
+        """
+        endpoint = "/order/cancelOrder"
+        data = {
+            "symbol": symbol,
+            "marginCoin": "USDT",
+            "orderId": str(order_id)
+        }
+        return self._request("POST", endpoint, data=data)
+
+    def cancel_all_pending_orders(self):
+        """
+        Cancel all currently pending orders for USDT margin.
+        """
+        pending = self.get_pending_orders()
+        results = []
+        for order in pending.get('data', []) or []:
+            try:
+                symbol = order.get('symbol')
+                order_id = order.get('orderId') or order.get('id')
+                if symbol and order_id:
+                    res = self.cancel_order(symbol, order_id)
+                    results.append(res)
+            except Exception as e:
+                results.append({"error": str(e), "order": order})
+        return results
     
     def test_authentication(self):
         """
